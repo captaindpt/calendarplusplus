@@ -23,6 +23,7 @@ class ICSEvent(BaseModel):
     description: str = ""
     location: str = ""
     frequency: str = ""
+    days: List[str] = []
 
 class ScheduleProcessor:
     def __init__(self, api_key: str):
@@ -63,7 +64,7 @@ class ScheduleProcessor:
             model="gpt-4",
             response_model=List[EventDescription],
             messages=[
-                {"role": "system", "content": f"You are an AI assistant that splits a clarified schedule into individual event descriptions. Today's date is {self.reference_date}. Each event should be a separate item and include specific dates based on the current date."},
+                {"role": "system", "content": f"You are an AI assistant that splits a clarified schedule into individual event descriptions. Today's date is {self.reference_date}. Each event should be a separate item have specified the name of the event, description of the event, the start date, the end date, the frequency of the event."},
                 {"role": "user", "content": f"Split this schedule into individual events: {clarified_text}"}
             ],
             max_retries=2
@@ -77,7 +78,15 @@ class ScheduleProcessor:
             model="gpt-4",
             response_model=ICSEvent,
             messages=[
-                {"role": "system", "content": f"You are an AI assistant that converts event descriptions into structured ICS event data. Today's date is {self.reference_date}. Provide the necessary details for an ICS event, using specific dates based on the current date. Use ISO format for dates and times (YYYY-MM-DDTHH:MM:SS)."},
+                {"role": "system", "content": f"""You are an AI assistant that converts event descriptions into structured ICS event data. Today's date is {self.reference_date}. Provide the necessary details for an ICS event, using specific dates based on the current date. Use ISO format for dates and times (YYYY-MM-DDTHH:MM:SS).
+
+                    For recurring events:
+                    1. Specify the frequency as one of DAILY, WEEKLY, MONTHLY, or YEARLY.
+                    2. For the 'days' field, provide a list of individual day abbreviations. Use these exact abbreviations: MO, TU, WE, TH, FR, SA, SU.
+
+                    Example of correct 'days' format: ["MO", "WE", "FR"] for Monday, Wednesday, Friday.
+
+                    Do not combine day abbreviations into a single string."""},
                 {"role": "user", "content": f"Convert this event description to ICS event data: {event_description}"}
             ],
             max_retries=2
@@ -97,7 +106,14 @@ class ScheduleProcessor:
             if event.location:
                 ics_event.add('location', event.location)
             if event.frequency:
-                ics_event.add('rrule', {'freq': event.frequency})
+                rrule = {'freq': event.frequency.upper()}
+                if event.days:
+                    # Filter valid days and join them into a comma-separated string
+                    valid_days = [day for day in event.days if day in ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']]
+                    print(valid_days)
+                    if valid_days:
+                        rrule['byday'] = (valid_days)  # Join as a string
+                ics_event.add('rrule', rrule)
             cal.add_component(ics_event)
 
         ics_content = cal.to_ical().decode('utf-8')
