@@ -78,15 +78,18 @@ class ScheduleProcessor:
             model="gpt-4",
             response_model=ICSEvent,
             messages=[
-                {"role": "system", "content": f"""You are an AI assistant that converts event descriptions into structured ICS event data. Today's date is {self.reference_date}. Provide the necessary details for an ICS event, using specific dates based on the current date. Use ISO format for dates and times (YYYY-MM-DDTHH:MM:SS).
+                {"role": "system", "content": f"""You are an AI assistant that converts event descriptions into structured ICS event data. Today's date is {self.reference_date}. The semester runs from September 5th to November 27th, 2024.
 
-                    For recurring events:
-                    1. Specify the frequency as one of DAILY, WEEKLY, MONTHLY, or YEARLY.
-                    2. For the 'days' field, provide a list of individual day abbreviations. Use these exact abbreviations: MO, TU, WE, TH, FR, SA, SU.
+                    For each event:
+                    1. Set the start_datetime to the first occurrence of the event within the semester period.
+                    2. Set the end_datetime to be the duration of a single session (typically 2-3 hours after start_datetime).
+                    3. Specify the frequency as WEEKLY.
+                    4. For the 'days' field, provide a list of individual day abbreviations. Use these exact abbreviations: MO, TU, WE, TH, FR, SA, SU.
 
-                    Example of correct 'days' format: ["MO", "WE", "FR"] for Monday, Wednesday, Friday.
+                    Example of correct 'days' format: ["MO"] for Monday, ["TU"] for Tuesday, etc.
 
-                    Do not combine day abbreviations into a single string."""},
+                    Use ISO format for dates and times (YYYY-MM-DDTHH:MM:SS).
+                    """},
                 {"role": "user", "content": f"Convert this event description to ICS event data: {event_description}"}
             ],
             max_retries=2
@@ -106,13 +109,14 @@ class ScheduleProcessor:
             if event.location:
                 ics_event.add('location', event.location)
             if event.frequency:
-                rrule = {'freq': event.frequency.upper()}
+                rrule = {
+                    'freq': event.frequency.upper(),
+                    'until': datetime(2024, 11, 27, 23, 59, 59)  # End of semester
+                }
                 if event.days:
-                    # Filter valid days and join them into a comma-separated string
                     valid_days = [day for day in event.days if day in ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']]
-                    print(valid_days)
                     if valid_days:
-                        rrule['byday'] = (valid_days)  # Join as a string
+                        rrule['byday'] = valid_days
                 ics_event.add('rrule', rrule)
             cal.add_component(ics_event)
 
