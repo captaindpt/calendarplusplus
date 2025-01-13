@@ -1,7 +1,7 @@
-Flask
-flask-cors
-gunicorn
-instructor
-openai
-pydantic
-python-dotenv
+openai>=1.12.0
+pydantic>=2.6.0
+icalendar>=5.0.11
+flask>=3.0.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.1
+python-dateutil>=2.8.2

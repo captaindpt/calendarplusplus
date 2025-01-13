@@ -2,39 +2,87 @@
 backend/venv
 backend/__pycache__
 backend/output_schedule.ics
+backend/.env
+backend/.env.*
+!backend/.env.example
 *.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
 
 # Frontend
 frontend/node_modules
 frontend/.pnp
 frontend/.pnp.js
+frontend/build
+frontend/.DS_Store
+frontend/logs
 
 # testing
 frontend/coverage
+deploy_test.sh
+test_output/
+
+# Logs
+logs/*
+!logs/.gitkeep
+!logs/chatgpt_logs/.gitkeep
+!logs/frontend_ics_logs/
+!logs/frontend_ics_logs/.gitkeep
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
 
 # production
 frontend/build
+dist/
+build/
 
 # misc
 .env
+.env.*
+!.env.example
 .DS_Store
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # IDE
-.vscode
-.idea
+.vscode/
+.idea/
+*.swp
+*.swo
+.ropeproject/
+*.sublime-workspace
+*.sublime-project
 
 # Temporary files
-*.log
 *.tmp
+temp_audio.wav
+*.bak
+*.cache
 
 # Operating System Files
 Thumbs.db
+.DS_Store
+.directory
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Python virtual environment
+venv/
+env/
+ENV/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# JavaScript
+.npm
+.eslintcache
+.node_repl_history

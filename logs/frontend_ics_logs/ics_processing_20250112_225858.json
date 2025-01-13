@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-01-13T03:58:58.631Z",
+  "type": "ics_event_dates",
+  "data": {
+    "summary": "Database Systems",
+    "start": "2024-09-05T18:00:00.000Z",
+    "end": "2024-09-05T19:30:00.000Z",
+    "isRecurring": true
+  }
+}

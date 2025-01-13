@@ -4,7 +4,7 @@ function StatusCheck() {
   const [status, setStatus] = useState("Checking backend status...");
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/status")
+    fetch("http://localhost:8001/api/status")
       .then((response) => response.json())
       .then((data) => setStatus(data.status))
       .catch((error) => setStatus("Error connecting to backend"));

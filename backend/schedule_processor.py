@@ -1,195 +1,182 @@
-import instructor
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from typing import List
 from icalendar import Calendar, Event
-import asyncio
-from datetime import datetime, date
+from datetime import datetime, timedelta
 import logging
+import logging.handlers
+import os
+import uuid
+import json
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Create logs directory if it doesn't exist
+log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+os.makedirs(log_dir, exist_ok=True)
 
-class ClarifiedSchedule(BaseModel):
-    clarified_text: str = Field(description="A clear, structured version of the user's input")
+# Set up file handler with rotation
+log_file = os.path.join(log_dir, 'schedule_processor.log')
+file_handler = logging.handlers.RotatingFileHandler(
+    log_file,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
 
-class EventDescription(BaseModel):
-    description: str = Field(description="A clear description of a single event")
+# Set up console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter(
+    '%(levelname)s: %(message)s'
+))
 
-class ICSEvent(BaseModel):
-    summary: str
-    start_datetime: datetime
-    end_datetime: datetime
-    description: str = ""
-    location: str = ""
-    frequency: str = ""
-    days: List[str] = []
+# Configure logger
+logger = logging.getLogger('schedule_processor')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+class ClassSchedule(BaseModel):
+    """Simple class schedule with just what we need for calendar events"""
+    class_name: str = Field(description="Name of the class")
+    days: List[str] = Field(description="Days of the week the class meets")
+    start_time: str = Field(description="Start time in 24h format (HH:MM)")
+    end_time: str = Field(description="End time in 24h format (HH:MM)")
+    location: str = Field(description="Location of the class")
 
 class ScheduleProcessor:
     def __init__(self, api_key: str):
-        self.client = instructor.patch(AsyncOpenAI(api_key=api_key))
-        self.reference_date = self.get_current_date()
+        self.client = AsyncOpenAI(api_key=api_key)
+        logger.info("Initialized ScheduleProcessor")
+        
+    async def parse_schedule(self, user_input: str) -> List[ClassSchedule]:
+        """Extract class schedules from user input using a single LLM call"""
+        logger.info("Starting schedule parsing")
+        logger.debug(f"Input text: {user_input}")
+        
+        today = datetime.now()
+        semester_end = today + timedelta(days=90)  # Roughly a semester
+        logger.debug(f"Using date range: {today.date()} to {semester_end.date()}")
+        
+        system_prompt = f"""You are a schedule parser that extracts class information for calendar generation.
+        Today's date: {today.strftime('%Y-%m-%d')}
+        Semester runs until: {semester_end.strftime('%Y-%m-%d')}
+        
+        Extract only the essential details needed for creating calendar events:
+        - Exact class names as mentioned
+        - Days they meet (full day names: Monday, Tuesday, etc.)
+        - Start and end times (in 24-hour format HH:MM)
+        - Locations exactly as specified
+        
+        Return the information in this format:
+        {{
+            "classes": [
+                {{
+                    "class_name": "Database Systems",
+                    "days": ["Monday", "Wednesday"],
+                    "start_time": "14:00",
+                    "end_time": "15:30",
+                    "location": "Engineering Building 405"
+                }}
+            ]
+        }}"""
 
-    def get_current_date(self) -> str:
-        return date.today().isoformat()
-
-    async def transcribe_audio(self, audio_file_path: str) -> str:
-        logger.debug(f"Transcribing audio file: {audio_file_path}")
-        with open(audio_file_path, "rb") as audio_file:
-            transcript = await self.client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
+        try:
+            logger.debug("Making GPT request")
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_input}
+                ],
+                response_format={ "type": "json_object" },
+                temperature=0.7
             )
-        logger.debug(f"Transcription completed: {transcript}")
-        return transcript
+            
+            result = response.choices[0].message.content
+            logger.debug(f"GPT response: {result}")
+            
+            parsed = ClassSchedule.model_validate_json(result)
+            logger.info(f"Successfully parsed {len(parsed.classes)} classes")
+            return parsed.classes
+            
+        except Exception as e:
+            logger.error(f"Error parsing schedule: {str(e)}", exc_info=True)
+            raise Exception("Failed to understand the schedule. Please try rephrasing.")
 
-    async def clarify_text(self, user_input: str) -> ClarifiedSchedule:
-        logger.debug(f"Clarifying text: {user_input}")
-        result = await self.client.chat.completions.create(
-            model="gpt-4",
-            response_model=ClarifiedSchedule,
-            messages=[
-                {"role": "system", "content": f"You are an AI assistant that clarifies and structures unorganized schedule descriptions. Today's date is {self.reference_date}. Provide a clear, organized version of the user's input, interpreting relative dates based on the current date."},
-                {"role": "user", "content": f"Clarify and structure this schedule description: {user_input}"}
-            ],
-            max_retries=2
-        )
-        logger.debug(f"Clarified text: {result.clarified_text}")
-        return result
-
-    async def split_into_events(self, clarified_text: str) -> List[EventDescription]:
-        logger.debug(f"Splitting into events: {clarified_text}")
-        result = await self.client.chat.completions.create(
-            model="gpt-4",
-            response_model=List[EventDescription],
-            messages=[
-                {"role": "system", "content": f"You are an AI assistant that splits a clarified schedule into individual event descriptions. Today's date is {self.reference_date}. Each event should be a separate item have specified the name of the event, description of the event, the start date, the end date, the frequency of the event."},
-                {"role": "user", "content": f"Split this schedule into individual events: {clarified_text}"}
-            ],
-            max_retries=2
-        )
-        logger.debug(f"Split events: {result}")
-        return result
-
-    async def convert_to_ics_event(self, event_description: str) -> ICSEvent:
-        logger.debug(f"Converting to ICS event: {event_description}")
-        result = await self.client.chat.completions.create(
-            model="gpt-4",
-            response_model=ICSEvent,
-            messages=[
-                {"role": "system", "content": f"""You are an AI assistant that converts event descriptions into structured ICS event data. Today's date is {self.reference_date}. The semester runs from September 5th to November 27th, 2024.
-
-                    For each event:
-                    1. Set the start_datetime to the first occurrence of the event within the semester period.
-                    2. Set the end_datetime to be the duration of a single session (typically 2-3 hours after start_datetime).
-                    3. Specify the frequency as WEEKLY.
-                    4. For the 'days' field, provide a list of individual day abbreviations. Use these exact abbreviations: MO, TU, WE, TH, FR, SA, SU.
-
-                    Example of correct 'days' format: ["MO"] for Monday, ["TU"] for Tuesday, etc.
-
-                    Use ISO format for dates and times (YYYY-MM-DDTHH:MM:SS).
-                    """},
-                {"role": "user", "content": f"Convert this event description to ICS event data: {event_description}"}
-            ],
-            max_retries=2
-        )
-        logger.debug(f"Converted ICS event: {result}")
-        return result
-
-    def generate_ics(self, ics_events: List[ICSEvent]) -> str:
-        logger.debug(f"Generating ICS file for {len(ics_events)} events")
+    def generate_ics(self, classes: List[ClassSchedule]) -> str:
+        """Convert class schedules directly to ICS format"""
+        logger.info("Starting ICS generation")
+        logger.debug(f"Generating ICS for {len(classes)} classes")
+        
         cal = Calendar()
-        for event in ics_events:
-            ics_event = Event()
-            ics_event.add('summary', event.summary)
-            ics_event.add('dtstart', event.start_datetime)
-            ics_event.add('dtend', event.end_datetime)
-            ics_event.add('description', event.description)
-            if event.location:
-                ics_event.add('location', event.location)
-            if event.frequency:
-                rrule = {
-                    'freq': event.frequency.upper(),
-                    'until': datetime(2024, 11, 27, 23, 59, 59)  # End of semester
+        cal.add('version', '2.0')
+        cal.add('prodid', '-//Calendar++//Schedule Generator//EN')
+        
+        today = datetime.now()
+        semester_end = today + timedelta(days=90)
+        logger.debug(f"Using date range: {today.date()} to {semester_end.date()}")
+        
+        # Map day names to iCal day codes
+        day_map = {
+            "Monday": "MO",
+            "Tuesday": "TU",
+            "Wednesday": "WE",
+            "Thursday": "TH",
+            "Friday": "FR"
+        }
+        
+        for class_schedule in classes:
+            try:
+                event = Event()
+                
+                # Create unique ID
+                event_uid = str(uuid.uuid4())
+                event.add('uid', event_uid)
+                event.add('summary', class_schedule.class_name)
+                event.add('location', class_schedule.location)
+                
+                # Set start and end times
+                start_hour, start_minute = map(int, class_schedule.start_time.split(':'))
+                end_hour, end_minute = map(int, class_schedule.end_time.split(':'))
+                
+                start_dt = today.replace(hour=start_hour, minute=start_minute)
+                end_dt = today.replace(hour=end_hour, minute=end_minute)
+                
+                event.add('dtstart', start_dt)
+                event.add('dtend', end_dt)
+                
+                # Add weekly recurrence
+                recur = {
+                    'freq': 'weekly',
+                    'until': semester_end,
+                    'byday': [day_map[day] for day in class_schedule.days]
                 }
-                if event.days:
-                    valid_days = [day for day in event.days if day in ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']]
-                    if valid_days:
-                        rrule['byday'] = valid_days
-                ics_event.add('rrule', rrule)
-            cal.add_component(ics_event)
-
-        ics_content = cal.to_ical().decode('utf-8')
-        logger.debug(f"Generated ICS content: {ics_content}")
-        return ics_content
+                event.add('rrule', recur)
+                
+                cal.add_component(event)
+                logger.debug(f"Added event {event_uid} for {class_schedule.class_name}")
+                
+            except Exception as e:
+                logger.error(f"Error creating event for {class_schedule.class_name}: {str(e)}", exc_info=True)
+                raise
+        
+        logger.info("Successfully generated ICS calendar")
+        return cal.to_ical().decode('utf-8')
 
     async def process_user_schedule(self, user_input: str) -> str:
-        logger.info(f"Processing user schedule: {user_input}")
-
-        # Step 1: Clarify the general text
-        clarified_schedule = await self.clarify_text(user_input)
-
-        # Step 2: Split into individual event descriptions
-        event_descriptions = await self.split_into_events(clarified_schedule.clarified_text)
-
-        # Step 3: Convert each event description to ICS event
-        ics_events = []
-        for event_desc in event_descriptions:
-            ics_event = await self.convert_to_ics_event(event_desc.description)
-            ics_events.append(ics_event)
-
-        # Generate .ics file
-        ics_content = self.generate_ics(ics_events)
-
-        logger.info("Schedule processing completed")
-        return ics_content
-
-
-import asyncio
-import os
-from schedule_processor import ScheduleProcessor
-import logging
-import os
-from dotenv import load_dotenv
-from pathlib import Path
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-async def main():
-    env_path = Path('..') / '.env'
-    load_dotenv(dotenv_path=env_path)
-    # Get the API key from an environment variable
-    api_key = os.environ.get('OPENAI_API_KEY')
-    if not api_key:
-        logger.error("Please set the OPENAI_API_KEY environment variable.")
-        return
-
-    # Initialize the ScheduleProcessor
-    processor = ScheduleProcessor(api_key)
-
-    # Get user input
-    print("Please enter your schedule description:")
-    user_input = input()
-
-    try:
-        # Process the schedule
-        ics_content = await processor.process_user_schedule(user_input)
-
-        # Save the ICS content to a file
-        with open('output_schedule.ics', 'w') as f:
-            f.write(ics_content)
-
-        logger.info("Schedule processed successfully!")
-        logger.info("ICS file saved as 'output_schedule.ics'")
-
-        # Print the ICS content for inspection
-        logger.debug("ICS Content:")
-        logger.debug(ics_content)
-
-    except Exception as e:
-        logger.exception(f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        """Main processing function: text -> parse -> ICS"""
+        logger.info("Starting schedule processing")
+        try:
+            # One step to parse
+            classes = await self.parse_schedule(user_input)
+            logger.debug(f"Parsed classes: {json.dumps([c.model_dump() for c in classes], indent=2)}")
+            
+            # One step to generate ICS
+            result = self.generate_ics(classes)
+            logger.info("Successfully completed schedule processing")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing schedule: {str(e)}", exc_info=True)
+            raise

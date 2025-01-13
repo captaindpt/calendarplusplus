@@ -1,55 +1,54 @@
 # Calendar++
 
-Simply speak your schedule, and get a calendar file. This tool converts your natural speech about class schedules, meetings, or any recurring events into a standard calendar file that works with Google Calendar, Apple Calendar, or any other calendar app.
+> **Note**: This is an experimental project in active development, primarily focused on exploring LLM-powered backend processing for natural language schedule understanding. The implementation and features are subject to change.
 
-For example, you can say:
+A test bed for natural language schedule processing using GPT-4, exploring how Large Language Models can understand and structure informal schedule descriptions. The project aims to convert natural language about class schedules into structured calendar data, testing the boundaries of LLM comprehension and data transformation.
+
+Simply describe your schedule, and the system attempts to convert it into a calendar file. For example:
 "I have Database Systems on Mondays and Wednesdays from 2 PM to 3:30 PM in Room 405"
 or
 "My Algorithms class meets every Tuesday and Thursday at 11 AM until 12:30 PM in the Engineering Building"
 
-Note: This project focuses on the backend processing of voice-to-calendar conversion. While originally planned as a full application, we found that the core voice processing functionality was the most valuable part.
+## Project Focus
+
+This project serves as a research implementation exploring:
+- LLM capabilities in understanding unstructured schedule information
+- Natural language processing for temporal and location data
+- Conversion of semantic understanding into structured data formats
+- Balance between model comprehension and validation requirements
 
 ## Features
 
-- **Voice Input**: Just speak your schedule naturally
-- **Text Input**: Or type it if you prefer
-- **Smart Understanding**: Handles natural language descriptions of your schedule
+- **Natural Language**: Just describe your schedule in plain English
+- **Smart Parsing**: Automatically understands class names, times, days, and locations
 - **Calendar Files**: Creates standard ICS files you can import anywhere
+- **Dynamic Scheduling**: Creates events starting from today, running for a semester
+- **Weekly Patterns**: Handles recurring weekly schedules automatically
 
 ## How It Works
 
-The system processes your input in these steps:
+The system processes your input in two simple steps:
 
-1. **Voice to Text**
-   - Records your voice
-   - Converts it to text using Whisper API
+1. **Schedule Understanding**
+   - Takes your natural description
+   - Extracts class names, times, days, and locations
+   - Uses GPT-4 for accurate understanding
 
-2. **Schedule Understanding**
-   - Processes your natural description
-   - Figures out times, days, and patterns
-
-3. **Event Creation**
+2. **Calendar Creation**
    - Creates proper calendar events
-   - Handles details like:
-     - Class/meeting names
-     - Start and end times
-     - Locations
-     - Weekly patterns
-
-4. **Calendar File**
-   - Makes a standard calendar file
-   - Ready to import into your preferred calendar app
+   - Sets up weekly recurrence
+   - Generates a standard ICS file
 
 ## Technical Details
 
 ### Backend
 - Python 3.12+
 - Flask
-- OpenAI API (GPT-4 and Whisper)
+- OpenAI API (GPT-4)
 - icalendar for calendar files
 
 ### Main Libraries
-- `instructor`: OpenAI API handling
+- `openai`: GPT-4 API
 - `pydantic`: Data validation
 - `icalendar`: Calendar file creation
 - `flask-cors`: API access
@@ -57,12 +56,12 @@ The system processes your input in these steps:
 
 ## Calendar Support
 
-Works with semester schedules (Sept 5 - Nov 27, 2024) and handles:
-- One-time events
-- Weekly recurring events
-- Multiple-day events
-- Room locations
-- Event descriptions
+Creates semester-length schedules that:
+- Start from today
+- Run for roughly 90 days
+- Support weekly recurring events
+- Include room locations
+- Work with all major calendar apps
 
 ## Getting Started
 
@@ -92,8 +91,7 @@ Works with semester schedules (Sept 5 - Nov 27, 2024) and handles:
 
 Try it out with this simple script:
 
-```bash
-python -c "
+```python
 import asyncio
 from schedule_processor import ScheduleProcessor
 
@@ -106,7 +104,15 @@ async def main():
         f.write(result)
 
 asyncio.run(main())
-"
 ```
 
 Import the generated `my_schedule.ics` file into your calendar, and you're done!
+
+## Implementation Notes
+
+The system uses a streamlined approach:
+1. A single GPT-4 call parses the schedule into structured data
+2. Direct conversion to ICS format with proper recurrence rules
+3. Dynamic date handling starting from today
+4. Minimal validation for maximum reliability
+5. Clear, focused prompts for consistent results

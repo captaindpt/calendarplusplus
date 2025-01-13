@@ -1,37 +1,29 @@
 import React, { useState } from 'react';
 import './InputArea.css';
 
-function InputArea({ onSubmit }) {
+const InputArea = ({ onSubmit, disabled }) => {
   const [input, setInput] = useState('');
 
-  const handleInputChange = (e) => {
-    setInput(e.target.value);
-  };
-
-  const handleSubmit = () => {
+  const handleSubmit = (e) => {
+    e.preventDefault();
     onSubmit(input);
-    setInput('');
-  };
-
-  const handleMicClick = () => {
-    // Implement audio input functionality here
-    console.log('Mic clicked');
   };
 
   return (
-    <div className="input-area">
+    <form onSubmit={handleSubmit} className="input-area">
       <textarea
         value={input}
-        onChange={handleInputChange}
-        placeholder="Enter your schedule description..."
-        rows={Math.max(2, input.split('\n').length)}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Enter your class schedule..."
+        disabled={disabled}
       />
       <div className="button-area">
-        <button onClick={handleMicClick} className="mic-button">🎤</button>
-        <button onClick={handleSubmit} className="send-button">Send</button>
+        <button type="submit" className="send-button" disabled={disabled}>
+          {disabled ? 'Processing...' : 'Process Schedule'}
+        </button>
       </div>
-    </div>
+    </form>
   );
-}
+};
 
 export default InputArea;
